@@ -1,0 +1,37 @@
+---
+- name: Set the first controlplane node as the delegate
+  ansible.builtin.set_fact:
+    controlplane_node: "{{ groups['controlplane'][0] }}"
+  delegate_to: localhost
+
+- name: Extract Kubernetes CA certificate
+  ansible.builtin.command: >
+    {{ kubectl_path }} get configmap kube-root-ca.crt -n default
+      -o jsonpath="{.data['ca\.crt']}"
+      --kubeconfig {{ kubeconfig_path }}
+  register: kubernetes_ca_cert
+  changed_when:
+    - "not 'Error' in kubernetes_ca_cert.stderr"
+    - "not 'Error' in kubernetes_ca_cert.stdout"
+  become: true
+  when: inventory_hostname == controlplane_node
+
+- name: Save Kubernetes CA certificate to file
+  ansible.builtin.copy:
+    content: "{{ kubernetes_ca_cert.stdout }}"
+    dest: "{{ kubernetes_ca_cert_path }}"
+    mode: '0644'
+  delegate_to: localhost
+  when: inventory_hostname == controlplane_node
+
+- name: Read Kubernetes CA certificate
+  ansible.builtin.slurp:
+    src: "{{ kubernetes_ca_cert_path }}"
+  register: ca_cert
+  delegate_to: localhost
+  when: inventory_hostname == controlplane_node
+
+- name: Display Kubernetes CA certificate
+  ansible.builtin.debug:
+    msg: "{{ ca_cert.content }}"
+  when: inventory_hostname == controlplane_node

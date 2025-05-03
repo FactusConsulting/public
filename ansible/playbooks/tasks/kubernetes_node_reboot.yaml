@@ -1,0 +1,86 @@
+---
+
+- name: Get control plane node
+  ansible.builtin.set_fact:
+    control_plane_node: "{{ groups['controlplane'][0] }}"
+
+- name: Check if a reboot is needed
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: reboot_required_file
+  changed_when:
+    - reboot_required_file.stat.exists
+
+- name: Cordon the worker node
+  ansible.builtin.command: >
+    kubectl cordon {{ inventory_hostname }} --kubeconfig={{ kubeconfig_path }}
+  delegate_to: "{{ control_plane_node }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  when:
+    - reboot_required_file.stat.exists
+  changed_when: true
+
+- name: Drain the worker node
+  ansible.builtin.command: >
+    kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data --force
+  delegate_to: "{{ control_plane_node }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+  when:
+    - reboot_required_file.stat.exists
+  changed_when: true
+
+- name: Reboot the box
+  ansible.builtin.reboot:
+    msg: "Reboot initiated by Ansible for kernel updates"
+    connect_timeout: 5
+    reboot_timeout: 300
+    test_command: ping localhost -c 4
+    post_reboot_delay: 18
+  when:
+    - reboot_required_file.stat.exists
+
+- name: DebugControlplane_api_url
+  ansible.builtin.debug:
+    var: kubernetes_api_url
+
+- name: Wait for a control plane node to be available
+  ansible.builtin.uri:
+    url: "{{ kubernetes_api_url }}"
+    method: GET
+    return_content: true
+    validate_certs: false
+    status_code: 401
+  register: _result
+  until: _result.status != -1
+  retries: 100
+  delay: 5
+
+- name: Show homek8s cluster context Response
+  ansible.builtin.debug:
+    var: _result
+  tags: NonPro
+
+- name: Make the node schedulable again (controlplane role)
+  ansible.builtin.command: >
+    /var/lib/rancher/rke2/bin/kubectl uncordon {{ inventory_hostname }}
+    --kubeconfig=/etc/rancher/rke2/rke2.yaml
+  register: uncordon_result
+  until: uncordon_result.rc == 0
+  retries: 10
+  delay: 30
+  changed_when: true
+  when: "'controlplane' in group_names"
+
+- name: Make the node schedulable again (worker role)
+  ansible.builtin.command: >
+    /var/lib/rancher/rke2/bin/kubectl uncordon {{ inventory_hostname }}
+    --kubeconfig=/etc/rancher/rke2/rke2.yaml
+  register: uncordon_result
+  until: uncordon_result.rc == 0
+  retries: 10
+  delay: 30
+  changed_when: true
+  delegate_to: "{{ control_plane_node }}"
+  when: "'worker' in group_names"
