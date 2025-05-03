@@ -7,4 +7,5 @@ ansible-playbook ansible/playbooks/update-servers.yaml -i ansible/inventory/host
 ```
 
 use --ask-pass if there are no passwordless ssh setup
+
 use --ask-become-pass if there are no passwordless sudo setup
