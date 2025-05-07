@@ -41,7 +41,7 @@
   when:
     - reboot_required_file.stat.exists
 
-- name: DebugControlplane_api_url
+- name: Debug Controlplane_api_url
   ansible.builtin.debug:
     var: kubernetes_api_url
 
