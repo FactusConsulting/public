@@ -66,7 +66,7 @@
     - name: Include kubernetes node restarts tasks if needed
       vars:
         kubeconfig_path: /etc/rancher/rke2/rke2.yaml
-      ansible.builtin.include_tasks: tasks/kubernetes_node_reboot.yaml
+      ansible.builtin.include_tasks: tasks/kubernetes_rke2_node_reboot.yaml
       when:
         - reboot_required_file.stat.exists
         - kubectl_file.stat.exists
